@@ -1,0 +1,39 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Log in to DockerHub
+      run: |
+        echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
+        docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/devops-app:${{ github.sha }} \
+          -t ${{ secrets.DOCKERHUB_USERNAME }}/devops-app:latest \
+          ./app
+
+    - name: Push Docker image
+      run: |
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/devops-app:${{ github.sha }}
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/devops-app:latest
+
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl set image deployment/devops-app \
+          devops-app=${{ secrets.DOCKERHUB_USERNAME }}/devops-app:${{ github.sha }}
+        kubectl rollout status deployment/devops-app --timeout=120s
+
+    - name: Verify deployment
+      run: |
+        kubectl get pods
+        kubectl get services
